@@ -24,6 +24,8 @@ INT_PTR CALLBACK    About(HWND, UINT, WPARAM, LPARAM);
 HANDLE	getWlanHandle(GUID *);
 int		getWlanSpeed(const GUID *);
 
+HICON	createTextIcon(TCHAR *text, int size = 16);
+
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
                      _In_opt_ HINSTANCE hPrevInstance,
                      _In_ LPWSTR    lpCmdLine,
@@ -251,4 +253,11 @@ int getWlanSpeed(const GUID *guid)
 	}
 
 	return res;
+}
+
+HICON createTextIcon(TCHAR * text, int size)
+{
+	BITMAP bmp;
+
+	return HICON(-1);
 }
