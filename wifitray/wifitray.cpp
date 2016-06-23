@@ -11,6 +11,7 @@
 // Global Variables:
 HINSTANCE hInst;                                // current instance
 HANDLE wlanHandle;
+GUID	wlanInterfaceGUID;
 WCHAR szTitle[MAX_LOADSTRING];                  // The title bar text
 WCHAR szWindowClass[MAX_LOADSTRING];            // the main window class name
 
@@ -19,7 +20,9 @@ ATOM                MyRegisterClass(HINSTANCE hInstance);
 BOOL                InitInstance(HINSTANCE, int);
 LRESULT CALLBACK    WndProc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK    About(HWND, UINT, WPARAM, LPARAM);
-int getWlanSpeed();
+
+HANDLE	getWlanHandle(GUID *);
+int		getWlanSpeed(const GUID *);
 
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
                      _In_opt_ HINSTANCE hPrevInstance,
@@ -101,6 +104,8 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 {
    hInst = hInstance; // Store instance handle in our global variable
 
+   wlanHandle = getWlanHandle(&wlanInterfaceGUID);
+
    HWND hWnd = CreateWindowW(szWindowClass, szTitle, WS_OVERLAPPEDWINDOW,
       CW_USEDEFAULT, 0, CW_USEDEFAULT, 0, nullptr, nullptr, hInstance, nullptr);
 
@@ -130,19 +135,26 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
     switch (message)
     {
 	case WM_CREATE:
-		SetTimer(hWnd, TIMER_ID_1000, 500, 0);
-
+		if (wlanHandle != INVALID_HANDLE_VALUE)
+		{
+			SetTimer(hWnd, TIMER_ID_1000, 500, 0);
+		}
+		else
+		{
+			SetWindowText(hWnd, L"Invalid WLAN client handle");
+		}
 		break;
 
 	case WM_TIMER:
-	{
-		int linkSpeed = getWlanSpeed();
-		if (linkSpeed != -1)
+		if (wlanHandle != INVALID_HANDLE_VALUE)
 		{
-			wsprintfW(szTitle, L"WLAN Speed %d", linkSpeed);
-			SetWindowText(hWnd, szTitle);
+			int linkSpeed = getWlanSpeed(&wlanInterfaceGUID);
+			if (linkSpeed != -1)
+			{
+				wsprintfW(szTitle, L"WLAN Speed %d", linkSpeed);
+				SetWindowText(hWnd, szTitle);
+			}
 		}
-	}
 		break;
     case WM_COMMAND:
         {
@@ -198,29 +210,44 @@ INT_PTR CALLBACK About(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
     return (INT_PTR)FALSE;
 }
 
-int getWlanSpeed()
+HANDLE getWlanHandle(GUID *guid)
 {
 	DWORD version = 2;
 	HANDLE handle = 0;
 	PWLAN_INTERFACE_INFO_LIST pIIL = 0;
+
+	if (WlanOpenHandle(version, 0, &version, &handle) == ERROR_SUCCESS)
+	{
+		if (WlanEnumInterfaces(handle, 0, &pIIL) == ERROR_SUCCESS) // Освободить память !
+		{
+			*guid = pIIL->InterfaceInfo[0].InterfaceGuid;
+			WlanFreeMemory(pIIL);
+		}
+		else
+		{
+			WlanCloseHandle(handle, 0);
+			handle = INVALID_HANDLE_VALUE;
+		}
+	}
+	else
+	{
+		handle = INVALID_HANDLE_VALUE;
+	}
+	return handle;
+}
+
+int getWlanSpeed(const GUID *guid)
+{
 	PWLAN_CONNECTION_ATTRIBUTES pWlanConAttr = 0;
 	DWORD size = sizeof(WLAN_CONNECTION_ATTRIBUTES);
 	WLAN_OPCODE_VALUE_TYPE valueType;
 	int res = -1;
 
-	if (WlanOpenHandle(version, 0, &version, &handle) == ERROR_SUCCESS) 
+	if (WlanQueryInterface(wlanHandle, guid, wlan_intf_opcode_current_connection, 
+		0, &size, (PVOID *)&pWlanConAttr, &valueType) == ERROR_SUCCESS)
 	{
-		if (WlanEnumInterfaces(handle, 0, &pIIL) == ERROR_SUCCESS) // Освободить память !
-		{
-			if (WlanQueryInterface(handle, (const GUID *)&(pIIL->InterfaceInfo[0].InterfaceGuid),
-				wlan_intf_opcode_current_connection, 0, &size, (PVOID *)&pWlanConAttr, &valueType) == ERROR_SUCCESS)
-			{
-				res = (int)pWlanConAttr->wlanAssociationAttributes.ulRxRate;
-				WlanFreeMemory(pWlanConAttr);
-			}
-			WlanFreeMemory(pIIL);
-		}
-		WlanCloseHandle(handle, 0);
+		res = (int)pWlanConAttr->wlanAssociationAttributes.ulRxRate;
+		WlanFreeMemory(pWlanConAttr);
 	}
 
 	return res;
