@@ -3,11 +3,14 @@
 
 #include "stdafx.h"
 #include "wifitray.h"
+#include "Wlanapi.h"
 
 #define MAX_LOADSTRING 100
+#define TIMER_ID_1000 1001
 
 // Global Variables:
 HINSTANCE hInst;                                // current instance
+HANDLE wlanHandle;
 WCHAR szTitle[MAX_LOADSTRING];                  // The title bar text
 WCHAR szWindowClass[MAX_LOADSTRING];            // the main window class name
 
@@ -16,6 +19,7 @@ ATOM                MyRegisterClass(HINSTANCE hInstance);
 BOOL                InitInstance(HINSTANCE, int);
 LRESULT CALLBACK    WndProc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK    About(HWND, UINT, WPARAM, LPARAM);
+int getWlanSpeed();
 
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
                      _In_opt_ HINSTANCE hPrevInstance,
@@ -104,7 +108,7 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
    {
       return FALSE;
    }
-
+   
    ShowWindow(hWnd, nCmdShow);
    UpdateWindow(hWnd);
 
@@ -125,6 +129,21 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
     switch (message)
     {
+	case WM_CREATE:
+		SetTimer(hWnd, TIMER_ID_1000, 500, 0);
+
+		break;
+
+	case WM_TIMER:
+	{
+		int linkSpeed = getWlanSpeed();
+		if (linkSpeed != -1)
+		{
+			wsprintfW(szTitle, L"WLAN Speed %d", linkSpeed);
+			SetWindowText(hWnd, szTitle);
+		}
+	}
+		break;
     case WM_COMMAND:
         {
             int wmId = LOWORD(wParam);
@@ -177,4 +196,32 @@ INT_PTR CALLBACK About(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
         break;
     }
     return (INT_PTR)FALSE;
+}
+
+int getWlanSpeed()
+{
+	DWORD version = 2;
+	HANDLE handle = 0;
+	PWLAN_INTERFACE_INFO_LIST pIIL = 0;
+	PWLAN_CONNECTION_ATTRIBUTES pWlanConAttr = 0;
+	DWORD size = sizeof(WLAN_CONNECTION_ATTRIBUTES);
+	WLAN_OPCODE_VALUE_TYPE valueType;
+	int res = -1;
+
+	if (WlanOpenHandle(version, 0, &version, &handle) == ERROR_SUCCESS) 
+	{
+		if (WlanEnumInterfaces(handle, 0, &pIIL) == ERROR_SUCCESS) // Освободить память !
+		{
+			if (WlanQueryInterface(handle, (const GUID *)&(pIIL->InterfaceInfo[0].InterfaceGuid),
+				wlan_intf_opcode_current_connection, 0, &size, (PVOID *)&pWlanConAttr, &valueType) == ERROR_SUCCESS)
+			{
+				res = (int)pWlanConAttr->wlanAssociationAttributes.ulRxRate;
+				WlanFreeMemory(pWlanConAttr);
+			}
+			WlanFreeMemory(pIIL);
+		}
+		WlanCloseHandle(handle, 0);
+	}
+
+	return res;
 }
